@@ -1,0 +1,13 @@
+import { Module } from "@nestjs/common";
+import { RefundsService } from "./refunds.service";
+import { RefundsController } from "./refunds.controller";
+import { PrismaService } from "../prisma.service";
+import { LedgerModule } from "../ledger/ledger.module";
+
+@Module({
+  imports: [LedgerModule],
+  controllers: [RefundsController],
+  providers: [RefundsService, PrismaService],
+  exports: [RefundsService],
+})
+export class RefundsModule {}

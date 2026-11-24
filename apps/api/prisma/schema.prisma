@@ -1,0 +1,436 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PLATFORM_ADMIN
+  OWNER
+  CASHIER
+}
+
+enum MerchantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum BillStatus {
+  DRAFT
+  OPEN
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  PARTIALLY_PAID
+  OVERPAID
+  PAYMENT_REVIEW
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum QuoteStatus {
+  ACTIVE
+  EXPIRED
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REVIEW_REQUIRED
+}
+
+enum VerificationStatus {
+  CONFIRMED
+  FAILED
+  PARTIAL
+  OVERPAID
+  LATE
+  INVALID
+}
+
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum LedgerEntryDirection {
+  DEBIT
+  CREDIT
+}
+
+enum JournalType {
+  PAYMENT_SETTLEMENT
+  REVERSAL
+  ADJUSTMENT
+}
+
+enum RefundStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole @default(OWNER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  memberships  MerchantMember[]
+  refreshTokens RefreshToken[]
+  refundsRequested Refund[]     @relation("RefundsRequested")
+  refundsApproved  Refund[]     @relation("RefundsApproved")
+  refundsRejected  Refund[]     @relation("RefundsRejected")
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedBy String?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+model Merchant {
+  id             String         @id @default(cuid())
+  name           String
+  businessType   String?
+  status         MerchantStatus @default(ACTIVE)
+  settlementAddr String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  members        MerchantMember[]
+  bills          Bill[]
+  quotes         PaymentQuote[]
+  wallets        Wallet[]
+  paymentAttempts PaymentAttempt[]
+  ledgerAccounts LedgerAccount[]
+  ledgerJournals LedgerJournal[]
+  refunds        Refund[]
+}
+
+model MerchantMember {
+  id         String   @id @default(cuid())
+  userId     String
+  merchantId String
+  role       UserRole @default(CASHIER)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  @@unique([userId, merchantId])
+  @@index([merchantId])
+}
+
+model Wallet {
+  id         String   @id @default(cuid())
+  merchantId String
+  network    String
+  address    String
+  purpose    String   @default("SETTLEMENT")
+  createdAt  DateTime @default(now())
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  @@unique([network, address])
+  @@index([merchantId])
+}
+
+model Bill {
+  id           String     @id @default(cuid())
+  merchantId   String
+  idempotencyKey String?
+  requestHash  String?
+  number       String
+  publicToken  String     @unique
+  description  String?
+  customerName String?
+  customerEmail String?
+  currency     String     @default("USD")
+  subtotal     Decimal    @default(0) @db.Decimal(20, 2)
+  taxRate      Decimal    @default(0) @db.Decimal(7, 4)
+  taxAmount    Decimal    @default(0) @db.Decimal(20, 2)
+  total        Decimal    @db.Decimal(20, 2)
+  status       BillStatus @default(DRAFT)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  merchant     Merchant   @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  items        BillItem[]
+  quotes       PaymentQuote[]
+  paymentAttempts PaymentAttempt[]
+  verifiedTransactions VerifiedTransaction[]
+  ledgerJournals LedgerJournal[]
+  refunds        Refund[]
+  @@unique([merchantId, number])
+  @@unique([merchantId, idempotencyKey])
+  @@index([merchantId, status, createdAt])
+}
+
+model BillItem {
+  id          String  @id @default(cuid())
+  billId      String
+  description String
+  quantity    Decimal @db.Decimal(20, 6)
+  unitPrice   Decimal @db.Decimal(20, 6)
+  lineTotal   Decimal @db.Decimal(20, 2)
+  bill        Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  @@index([billId])
+}
+
+model PaymentQuote {
+  id               String      @id @default(cuid())
+  billId           String
+  merchantId       String
+  tokenMint        String
+  tokenSymbol      String      @default("USDC")
+  tokenDecimals    Int         @default(6)
+  fiatAmount       Decimal     @db.Decimal(20, 6)
+  fiatCurrency     String      @default("USD")
+  rate             Decimal     @db.Decimal(30, 12)
+  cryptoUnits      BigInt
+  feeUnits         BigInt      @default(0)
+  totalUnits       BigInt      @default(0)
+  feeBps           Int         @default(0)
+  priceSource      String      @default("coingecko")
+  priceUpdatedAt   DateTime
+  merchantRecipient String?     // base58 Solana address snapshotted at quote creation
+  feeRecipient      String?     // base58 Solana address; only set when feeUnits > 0
+  reference         String?     @unique  // Solana Pay reference pubkey (set at first attempt)
+  status            QuoteStatus @default(ACTIVE)
+  expiresAt         DateTime
+  createdAt         DateTime    @default(now())
+  bill              Bill        @relation(fields: [billId], references: [id], onDelete: Restrict)
+  merchant          Merchant    @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  paymentAttempts   PaymentAttempt[]
+  verifiedTransactions VerifiedTransaction[]
+  @@index([billId, createdAt])
+  @@index([merchantId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model PaymentAttempt {
+  id             String               @id @default(cuid())
+  quoteId        String               @unique
+  billId         String
+  merchantId     String
+  customerWallet String
+  reference      String               @unique
+  signature      String?              @unique
+  status         PaymentAttemptStatus @default(PENDING)
+  submittedAt    DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  quote          PaymentQuote         @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  bill           Bill                 @relation(fields: [billId], references: [id], onDelete: Restrict)
+  merchant       Merchant             @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  verifiedTransaction VerifiedTransaction?
+  @@index([billId])
+  @@index([merchantId])
+}
+
+model VerifiedTransaction {
+  id               String             @id @default(cuid())
+  billId           String
+  quoteId          String
+  attemptId        String?            @unique
+  signature        String             @unique
+  slot             BigInt
+  blockTime        DateTime?
+  amountUnits      BigInt             // Smallest units transferred to merchant
+  feeUnits         BigInt             @default(0) // Smallest units transferred to fee recipient
+  tokenMint        String
+  sourceOwner      String             // Customer / Payer wallet
+  destinationOwner String             // Merchant recipient wallet
+  feeDestination   String?            // Platform fee wallet
+  reference        String             // Solana Pay reference
+  status           VerificationStatus
+  reviewReason     String?            // Reason if flagged for review (LATE, PARTIAL, OVERPAID, etc.)
+  metaRaw          Json?              // Minimal verified transaction evidence
+  verifiedAt       DateTime           @default(now())
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  bill             Bill               @relation(fields: [billId], references: [id], onDelete: Restrict)
+  quote            PaymentQuote       @relation(fields: [quoteId], references: [id], onDelete: Restrict)
+  attempt          PaymentAttempt?    @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  ledgerJournals   LedgerJournal[]
+  refunds          Refund[]
+
+  @@index([billId])
+  @@index([quoteId])
+  @@index([status])
+  @@index([reference])
+}
+
+model IndexerCheckpoint {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  lastSlot   BigInt   @default(0)
+  lastSig    String?
+  cursorMeta Json?
+  updatedAt  DateTime @updatedAt
+}
+
+model LedgerAccount {
+  id          String            @id @default(cuid())
+  merchantId  String?           // null for platform-level accounts
+  code        String            // e.g. "1110_USDC_MERCHANT_SETTLEMENT"
+  name        String
+  type        LedgerAccountType
+  currency    String            @default("USDC")
+  network     String?           @default("devnet")
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  merchant    Merchant?         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  entries     LedgerEntry[]
+
+  @@unique([merchantId, code, currency])
+  @@index([merchantId, type])
+}
+
+model LedgerJournal {
+  id                String         @id @default(cuid())
+  merchantId        String?        // null for platform-only journals
+  billId            String?
+  verifiedTxId      String?        // link to verified transaction
+  type              JournalType    @default(PAYMENT_SETTLEMENT)
+  currency          String         @default("USDC")
+  network           String?        @default("devnet")
+  idempotencyKey    String         @unique
+  description       String
+  totalDebitUnits   BigInt
+  totalCreditUnits  BigInt
+  fiatAmount        Decimal?       @db.Decimal(20, 2)
+  fiatCurrency      String?
+  originalJournalId String?        // linked for REVERSAL or ADJUSTMENT
+  reversalReason    String?
+  postedAt          DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+
+  merchant          Merchant?      @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  bill              Bill?          @relation(fields: [billId], references: [id], onDelete: Restrict)
+  verifiedTx        VerifiedTransaction? @relation(fields: [verifiedTxId], references: [id], onDelete: Restrict)
+  originalJournal   LedgerJournal? @relation("JournalReversals", fields: [originalJournalId], references: [id], onDelete: Restrict)
+  reversalJournals  LedgerJournal[] @relation("JournalReversals")
+  entries           LedgerEntry[]
+  refund            Refund?
+
+  @@index([verifiedTxId, type])
+  @@index([merchantId, postedAt])
+  @@index([billId])
+  @@index([type])
+}
+
+model LedgerEntry {
+  id            String               @id @default(cuid())
+  journalId     String
+  accountId     String
+  direction     LedgerEntryDirection
+  amountUnits   BigInt               // Exact integer token smallest units
+  amountDecimal Decimal?             @db.Decimal(30, 12)
+  entryOrder    Int                  @default(0)
+  createdAt     DateTime             @default(now())
+
+  journal       LedgerJournal        @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  account       LedgerAccount        @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([journalId])
+  @@index([accountId])
+}
+
+model Refund {
+  id                      String            @id @default(cuid())
+  merchantId              String
+  billId                  String
+  verifiedTxId            String
+  amountUnits             BigInt            // Exact integer smallest units to refund
+  currency                String            @default("USDC")
+  fiatAmount              Decimal?          @db.Decimal(20, 2)
+  fiatCurrency            String?           @default("USD")
+  destinationWallet       String            // Base58 address (defaults to verifiedTx.sourceOwner)
+  isDestinationOverridden Boolean           @default(false)
+  sourceWallet            String            // Merchant settlement wallet
+  reason                  String
+  status                  RefundStatus      @default(REQUESTED)
+  idempotencyKey          String            @unique
+  requestedById           String
+  approvedById            String?
+  approvedAt              DateTime?
+  rejectedById            String?
+  rejectedAt              DateTime?
+  rejectionReason         String?
+  signature               String?           @unique // Solana Devnet transaction signature
+  reference               String?           @unique // Unique Solana Pay reference pubkey for indexer
+  slot                    BigInt?
+  blockTime               DateTime?
+  confirmedAt             DateTime?
+  failedAt                DateTime?
+  failureReason           String?
+  ledgerJournalId         String?           @unique
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+
+  merchant                Merchant          @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  bill                    Bill              @relation(fields: [billId], references: [id], onDelete: Restrict)
+  verifiedTx              VerifiedTransaction @relation(fields: [verifiedTxId], references: [id], onDelete: Restrict)
+  requestedBy             User              @relation("RefundsRequested", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy              User?             @relation("RefundsApproved", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedBy              User?             @relation("RefundsRejected", fields: [rejectedById], references: [id], onDelete: SetNull)
+  ledgerJournal           LedgerJournal?    @relation(fields: [ledgerJournalId], references: [id], onDelete: SetNull)
+  auditLogs               RefundAuditLog[]
+
+  @@index([merchantId])
+  @@index([billId])
+  @@index([verifiedTxId])
+  @@index([status])
+}
+
+model RefundAuditLog {
+  id         String        @id @default(cuid())
+  refundId   String
+  actorId    String        // User id or "system" / "worker"
+  action     String        // "REQUESTED", "APPROVED", "REJECTED", "SUBMITTED", "CONFIRMED", "FAILED"
+  fromStatus RefundStatus?
+  toStatus   RefundStatus
+  notes      String?
+  metadata   Json?
+  createdAt  DateTime      @default(now())
+
+  refund     Refund        @relation(fields: [refundId], references: [id], onDelete: Cascade)
+
+  @@index([refundId])
+  @@index([actorId])
+}
+
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actorEmail String
+  action     String
+  targetType String
+  targetId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+\n
