@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const apiInternalUrl = process.env.API_INTERNAL_URL ?? "http://localhost:4000";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["groups-disposition-sur-merger.trycloudflare.com"],
   async rewrites() {
     return [
       {
