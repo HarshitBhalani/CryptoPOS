@@ -15,14 +15,14 @@ CryptoPOS consists of five core services:
                +-------------------------+--------------------------+
                                          |
                          +---------------+---------------+
-                         |                               |
-                   HTTPS (Port 3000)               HTTPS (Port 4000)
-                         |                               |
-                 +-------v-------+               +-------v-------+
-                 |  apps/web     |               |  apps/api     |
-                 |  (Next.js)    |               |  (NestJS)     |
-                 +---------------+               +-------+-------+
-                                                         |
+                         |
+                   HTTPS (Port 443)
+                         |
+                 +-------v-------+
+                 |  apps/web     |--- /api/* proxy ---> apps/api
+                 |  (Next.js)    |                     (NestJS)
+                 +---------------+                          |
+                                                            |
          +-----------------------------------------------+---------------------------------------+
          |                                               |                                       |
  +-------v-------+                               +-------v-------+                       +-------v-------+
@@ -119,8 +119,8 @@ CryptoPOS consists of five core services:
 4. Edit `.env.production` using `nano .env.production` and set:
    - `DATABASE_URL` with the same generated password entered in `POSTGRES_PASSWORD`. Use the internal Compose host `postgres:5432`; keep the password hex-only so it needs no URL encoding.
    - `JWT_SECRET` and `JWT_REFRESH_SECRET`.
-   - `FRONTEND_URL` and `BACKEND_URL` with your production domains (e.g. `https://pos.example.com`).
-   - `NEXT_PUBLIC_API_URL` to `https://api.example.com/api/v1`; the web Docker build embeds this URL. The frontend and API custom domains must share the same parent domain for the current secure `SameSite=Lax` auth cookies.
+   - `FRONTEND_URL` and `BACKEND_URL` to your public app origin (e.g. `https://pos.example.com`).
+   - Keep `NEXT_PUBLIC_API_URL=/api/v1`. The browser calls the API through the Next.js same-origin proxy; Docker routes it internally to `http://api:4000`. This keeps login and refresh cookies on one origin.
    - `SOLANA_NETWORK=devnet` and `SOLANA_USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`.
    - A CoinGecko Demo key in `PRICE_PROVIDER_API_KEY` to enable quote creation. Leave `PLATFORM_FEE_WALLET` blank only while `PLATFORM_FEE_BPS=0`.
 
@@ -160,10 +160,6 @@ Configure `/etc/caddy/Caddyfile`:
 ```caddy
 pos.example.com {
     reverse_proxy localhost:3000
-}
-
-api.example.com {
-    reverse_proxy localhost:4000
 }
 ```
 

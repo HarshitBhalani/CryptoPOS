@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CustomerPaymentFlow } from "./customer-payment-flow";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+const API = `${process.env.API_INTERNAL_URL ?? "http://localhost:4000"}/api/v1`;
 
 type PublicBill = {
   number: string;

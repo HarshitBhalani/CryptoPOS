@@ -18,8 +18,10 @@ RUN mkdir -p apps/web/public
 
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_SOLANA_RPC_URL
+ARG API_INTERNAL_URL=http://api:4000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api/v1}
 ENV NEXT_PUBLIC_SOLANA_RPC_URL=${NEXT_PUBLIC_SOLANA_RPC_URL:-https://api.devnet.solana.com}
+ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 
 RUN npm run build --workspace=@cryptopos/web
 

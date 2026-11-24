@@ -15,7 +15,7 @@ import {
   type PaymentStep,
 } from "../../../lib/payment";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
 
 export type Quote = {
   id: string;
