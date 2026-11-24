@@ -432,5 +432,3 @@ model AdminAuditLog {
   @@index([targetType, targetId])
   @@index([createdAt])
 }
-
-\n

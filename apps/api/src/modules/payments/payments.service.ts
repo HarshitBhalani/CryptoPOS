@@ -211,5 +211,3 @@ export class PaymentsService {
     };
   }
 }
-
-\n

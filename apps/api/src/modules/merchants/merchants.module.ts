@@ -10,5 +10,6 @@ import { MerchantsService } from "./merchants.service";
   imports: [AuthModule, JwtModule.register({})],
   controllers: [MerchantsController, MerchantWalletController, MerchantSettingsController],
   providers: [JwtAuthGuard, MerchantsService, MerchantOwnerGuard],
+  exports: [MerchantOwnerGuard],
 })
 export class MerchantsModule {}

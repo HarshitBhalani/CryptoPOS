@@ -134,5 +134,3 @@ function formatUnits(units: bigint, decimals: number) {
   const fraction = (units % base).toString().padStart(decimals, "0");
   return decimals ? `${whole}.${fraction}` : whole.toString();
 }
-
-\n

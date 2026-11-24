@@ -8,5 +8,5 @@ import { MerchantAccessGuard } from "./merchant-access.guard";
 import { QuotesService } from "../quotes/quotes.service";
 import { PriceProvider } from "../quotes/price-provider";
 
-@Module({ imports: [AuthModule, JwtModule.register({})], controllers: [BillsController, PublicBillsController], providers: [JwtAuthGuard, BillsService, MerchantAccessGuard, QuotesService, PriceProvider] })
+@Module({ imports: [AuthModule, JwtModule.register({})], controllers: [BillsController, PublicBillsController], providers: [JwtAuthGuard, BillsService, MerchantAccessGuard, QuotesService, PriceProvider], exports: [MerchantAccessGuard] })
 export class BillsModule {}
