@@ -1,115 +1,137 @@
 # CryptoPOS
 
-> **Non-custodial cryptocurrency Point-of-Sale (POS) terminal, payments engine, and double-entry accounting ledger on Solana Devnet.**
+**A non-custodial cryptocurrency point-of-sale for merchants using Solana Devnet USDC.**
 
-CryptoPOS enables brick-and-mortar and online merchants to accept USD Coin (USDC) payments directly into their own merchant-controlled wallets on Solana Devnet without third-party custody, chargeback risk, or centralized intermediary holding.
+CryptoPOS lets a merchant create a bill, share a checkout link or QR code, and receive USDC directly in the merchant's own Solana wallet. The app handles invoices, quotes, payment verification, accounting records, and refunds; it does not take custody of funds or process credit/debit cards.
 
----
+> **Development status:** This project is currently restricted to Solana Devnet and test USDC. Do not use it to accept real funds.
 
-## Key Features
+## Temporary preview
 
-- **Non-Custodial Architecture:** Funds transfer directly from the customer's wallet (e.g. Phantom) to the merchant's on-chain settlement wallet. The platform never holds, signs, or controls private keys.
-- **Strict Network & Mint Isolation:** Pinned strictly to Solana Devnet with official Circle Devnet USDC (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, 6 decimals) and on-chain RPC genesis hash verification (`GH7ome3EiwEr7tu9JuTh2dpYWBJK3z69Xm1ZE3MEE6JC` and `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`).
-- **Cryptographic Pricing & Quote Engine:** Backend-calculated bills with exact integer smallest-unit conversions, live CoinGecko rate caching, and 120-second immutable quote snapshots capturing snapshotted recipient addresses.
-- **Independent On-Chain Indexer:** Standalone background worker (`npm run worker`) querying Solana Devnet RPC at `finalized` commitment. Decodes SPL token instructions, enforces Solana Pay reference uniqueness, and handles late/partial/overpaid transactions atomically. Client submissions are strictly treated as hints, never payment proof.
-- **Immutable Append-Only Double-Entry Ledger:** Full double-entry accounting system with standard Chart of Accounts (`1110` Settlement Asset, `4100` Sales Revenue, `1120` Platform Fee Asset, `4200` Fee Revenue, `2110` Prepayments). Every confirmed transaction posts balanced debit/credit journals. Supports owner-authorized reversals and discrepancy reconciliation.
-- **Auditable Non-Custodial Refunds:** Full and partial refunds signed directly by the merchant's Phantom wallet. Enforces remaining-refundable balance caps, platform fee exclusion, owner-only authorization, independent finalized verification, and automated ledger adjustments.
-- **Merchant Analytics & Platform Admin Tools:** Real-time dashboards with exact integer crypto KPIs, segregated fiat totals, continuous daily time series, bill status distribution, platform overview, merchant directory with status mutation (`ACTIVE` <-> `SUSPENDED`), and immutable `AdminAuditLog` records.
-- **Enterprise Security & Reliability:** Multi-origin CORS, security headers, rate limiting (Throttler), cookie-based JWT authentication with rotating refresh sessions, global exception sanitization, graceful shutdown hooks, and comprehensive health/readiness probes (`/api/v1/health` and `/api/v1/health/live`).
+[Open the current CryptoPOS preview](https://groups-disposition-sur-merger.trycloudflare.com)
 
----
+This is a temporary Cloudflare Quick Tunnel pointing to the developer's local machine. It works only while the local web app and tunnel process are running; the URL can change when the tunnel restarts. Anyone with the link can reach the exposed app, so use test data only. This is not production hosting or an uptime-guaranteed deployment.
 
-## Architecture & Technology Stack
+## What the project does
 
-- **Frontend (`apps/web`):** Next.js 15 (App Router), React 19, TypeScript, responsive dark-mode POS terminal and merchant dashboard.
-- **API Server (`apps/api`):** NestJS 11, TypeScript, Prisma ORM, Redis client, Express, validation pipes.
-- **Indexer Worker (`apps/api/src/worker.ts`):** Standalone NestJS worker process with distributed Redis lease (`cryptopos:indexer:lease`) and Solana Web3.js.
-- **Database:** PostgreSQL 16 with exact database `Decimal` and `BigInt` columns.
-- **Cache & Message Broker:** Redis 7 for distributed leases, session management, and rate limiting.
+- Creates merchant bills with line items, tax, and a public payment link.
+- Calculates a time-limited USDC quote from the bill's fiat total.
+- Lets a customer connect Phantom and approve a wallet transaction.
+- Sends payment directly to the merchant's settlement wallet.
+- Independently checks Solana Devnet transactions before marking bills paid.
+- Records confirmed payments in a balanced double-entry ledger.
+- Supports owner-controlled refunds, merchant analytics, and platform administration.
 
-Documentation:
-- [System Architecture](docs/ARCHITECTURE.md)
-- [Database Schema & Migrations](docs/DATABASE_SCHEMA.md)
-- [API Documentation](docs/API_DOCUMENTATION.md)
-- [Security Foundation](docs/SECURITY.md)
-- [User Flows & Lifecycles](docs/USER_FLOWS.md)
-- [Production Deployment & Runbook](docs/DEPLOYMENT.md)
-- [Project Status & AI Handoff](PROJECT_STATUS.md)
+### Payment flow
 
----
+1. The merchant configures a public settlement wallet address.
+2. The cashier creates a bill in the POS.
+3. The API creates a time-limited USDC quote using the configured price provider.
+4. The customer reviews the bill and approves the transfer in Phantom.
+5. A separate worker verifies the finalized Devnet transaction, including mint, amount, recipient, and payment reference.
+6. The API updates the bill and posts accounting entries after verification.
 
-## Local Development Quickstart
+The browser's payment result is not treated as proof by itself. The worker checks the blockchain independently.
 
-### Prerequisites
-- **Node.js**: v20 or higher
-- **Package Manager**: npm 10+
-- **Docker**: Docker Engine & Docker Compose
+## Solana and wallet safety
 
-### 1. Clone & Install
-```bash
-git clone https://github.com/your-org/cryptopos.git
-cd cryptopos
-npm install
-```
+- **Network:** Solana Devnet only.
+- **Token:** Circle Devnet USDC, mint 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU, 6 decimals.
+- **Wallet:** Phantom provides customer and merchant transaction approval.
+- **Custody:** CryptoPOS never asks for or stores a seed phrase or private key. Funds go directly to the merchant wallet.
+- **Pricing:** Fiat-to-USDC quotes use the configured price provider; a CoinGecko API key is optional for live quotes.
+- **Cards:** No credit/debit-card processor is integrated.
 
-### 2. Environment Configuration
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-Ensure PostgreSQL port (`5433` by default to avoid host collisions) and Redis port (`6379`) match your local environment.
+Devnet tokens are for testing and have no real-world value. Keep Phantom in Devnet/Testnet mode while using this project.
 
-### 3. Start Database & Redis
-```bash
-docker compose up -d
-```
+## Technology stack and why it is used
 
-### 4. Database Setup
-```bash
-npm run db:generate
-npm run db:deploy
-```
+| Technology | Used for | Why |
+| --- | --- | --- |
+| Next.js 15, React 19, TypeScript | Merchant dashboard, POS, and customer checkout | App Router organizes page flows; TypeScript helps catch UI and API-shape mistakes. |
+| NestJS 11, TypeScript | REST API and background worker | Modules separate authentication, merchants, bills, payments, refunds, analytics, and admin logic. |
+| PostgreSQL 16, Prisma | Users, merchants, bills, quotes, verified transactions, ledger, and audit records | Relational constraints and transactions protect connected financial records; migrations make schema changes repeatable. |
+| Redis 7 | Rate limiting, price cache, and worker lease | Shares short-lived state and prevents multiple workers from indexing the same stream concurrently. |
+| Solana Web3.js and SPL Token | Solana RPC and USDC transaction handling | Reads Devnet state and works with the USDC token program. |
+| Phantom | Wallet connection and transaction approval | The wallet owner signs; CryptoPOS never receives wallet secrets. |
+| Docker Compose | Local PostgreSQL and Redis services | Starts development dependencies consistently on one machine. |
+| Cloudflare Quick Tunnel | Temporary remote preview of the local web app | Shares a local HTTPS link without deploying the application; development use only. |
 
-### 5. Run Applications
-In separate terminal sessions:
-```bash
-# Terminal 1: Run NestJS API server (http://localhost:4000)
-npm run dev:api
+## Architecture
 
-# Terminal 2: Run Next.js Web Frontend (http://localhost:3000)
-npm run dev:web
+- **Web:** Next.js serves the merchant dashboard, POS, and customer checkout.
+- **API:** NestJS handles authentication, merchant access, bills, quotes, payment state, refunds, analytics, and administration.
+- **Database:** PostgreSQL stores application records; Prisma manages schema migrations and database access.
+- **Cache and coordination:** Redis supports rate limiting, price caching, and the indexer's distributed lease.
+- **Indexer:** A separate NestJS worker reads finalized Solana Devnet transactions and sends verified results to the application database.
+- **Wallet signing:** Phantom signs transactions in the user's browser. The API never stores private keys.
 
-# Terminal 3: Run Standalone Solana Indexer Worker
-npm run worker
-```
+The API verifies the mint, amount, destination, and payment reference. Client-submitted transaction details alone cannot mark a bill as paid.
 
----
+## Local development
 
-## Production Deployment
+### Requirements
 
-CryptoPOS includes production-ready Docker containers and orchestration:
+- Node.js 20 or newer
+- npm
+- Docker Desktop with Docker Compose
+- Phantom browser extension for wallet-flow testing
 
-- **`Dockerfile.api`**: Multi-stage production container for the NestJS API server.
-- **`Dockerfile.web`**: Multi-stage production container for the Next.js frontend.
-- **`Dockerfile.worker`**: Multi-stage production container for the standalone payment indexer.
-- **`docker-compose.prod.yml`**: Full-stack production compose configuration with persistent volumes, resource limits, and health checks.
-- **`.env.production.example`**: Production environment template.
+### Setup
 
-For detailed hosting options, pricing comparison, database backup scripts, and zero-downtime rolling update instructions, see **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
+Clone the repository and install dependencies:
 
-> [!CAUTION]
-> **Do not use free or sleeping hosting tiers (e.g. Render free tier, Heroku Eco) for the API or Worker.** Free tiers sleep after inactivity, which stops the Solana indexer from verifying and confirming customer payments.
+    git clone https://github.com/HarshitBhalani/CryptoPOS.git
+    cd CryptoPOS
+    npm install
 
----
+Copy the environment template to a local, untracked file:
 
-## Testing & Verification
+    Copy-Item .env.example .env
 
-Run the full build across all workspaces:
-```bash
-npm run build
-```
+In Bash, use: cp .env.example .env. Review .env and set strong local JWT secrets. Never commit .env.
 
-Run database migration status:
-```bash
-npx prisma migrate status --schema apps/api/prisma/schema.prisma
-```
+Start PostgreSQL and Redis:
+
+    docker compose up -d
+
+Generate the Prisma client and apply database migrations:
+
+    npm.cmd run db:generate
+    npm.cmd run db:deploy
+
+On Linux or macOS, use npm instead of npm.cmd.
+
+Run each process in its own terminal from the repository root:
+
+    npm.cmd run dev:api
+    npm.cmd run worker
+    npm.cmd run dev:web
+
+The web app is at http://localhost:3000. The API health endpoint is http://localhost:4000/api/v1/health. To create a temporary public preview, start a Quick Tunnel in another terminal:
+
+    cloudflared tunnel --url http://localhost:3000
+
+Open the HTTPS URL printed by cloudflared. Keep Docker, API, worker, web, and tunnel running while testing payment verification. If the tunnel creates a new hostname, use the new URL and update the Next.js development-origin allowlist if required.
+
+## Production
+
+The Quick Tunnel is not production hosting. Production requires an always-on API and indexer worker, persistent database storage, production secrets, HTTPS, backups, monitoring, and a stable domain. See the [Production Deployment Runbook](docs/DEPLOYMENT.md).
+
+## Project documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Database schema](docs/DATABASE_SCHEMA.md)
+- [API documentation](docs/API_DOCUMENTATION.md)
+- [Security](docs/SECURITY.md)
+- [User flows](docs/USER_FLOWS.md)
+- [Deployment runbook](docs/DEPLOYMENT.md)
+- [Project status and AI handoff](PROJECT_STATUS.md)
+
+## Build
+
+Build all workspaces:
+
+    npm.cmd run build
+
+On Linux or macOS, use npm run build.
