@@ -11,3 +11,4 @@ coverage/
 !.env.example
 !.env.production.example
 *.log
+/PROJECT_STATUS.md

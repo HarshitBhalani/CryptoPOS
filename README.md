@@ -126,7 +126,6 @@ The Quick Tunnel is not production hosting. Production requires an always-on API
 - [Security](docs/SECURITY.md)
 - [User flows](docs/USER_FLOWS.md)
 - [Deployment runbook](docs/DEPLOYMENT.md)
-- [Project status and AI handoff](PROJECT_STATUS.md)
 
 ## Build
 
